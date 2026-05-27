@@ -10,7 +10,8 @@
   "scripts": {
     "postinstall": "electron-builder install-app-deps",
     "server:setup": "tsx ./build-setup/setup-server.ts",
-    "build": "npm run build:src && npm run build:electron",
+    "build:ui": "cd ../custom-httptoolkit-ui && npm run build && cd - && rm -rf ui-dist && cp -r ../custom-httptoolkit-ui/dist ui-dist",
+    "build": "npm run build:ui && npm run build:src && npm run build:electron",
     "build:src": "tsc",
     "postbuild:src": "tsx ./build-setup/strip-preload-map.ts",
     "build:electron": "npm run server:setup && electron-builder build --config ./build-setup/electron-builder.config.cjs",
@@ -59,7 +60,8 @@
     "extraResources": [
       "httptoolkit-server/**/*",
       "httptoolkit-ctl{,.*}",
-      "httptoolkit-mcp{,.*}"
+      "httptoolkit-mcp{,.*}",
+      "ui-dist/**/*"
     ],
     "artifactName": "HttpToolkit-${version}-${arch}.${ext}",
     "mac": {

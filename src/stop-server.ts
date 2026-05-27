@@ -45,7 +45,7 @@ function softShutdown(token: string) {
         const req = http.request("http://127.0.0.1:45457/shutdown", {
             method: 'POST',
             headers: {
-                'origin': 'https://app.httptoolkit.tech',
+                'origin': 'app://httptoolkit', // CUSTOM: origin matches bundled UI protocol
                 'authorization': `Bearer ${token}`
             }
         });

@@ -25,12 +25,14 @@ import { ContextMenuDefinition, openContextMenu } from './context-menu.ts';
 import { stopServer } from './stop-server.ts';
 import { getDeviceDetails } from './device.ts';
 import { SERVER_PORTS, checkPortsInUse, checkWindowsReservedPorts } from './port-checks.ts';
+// CUSTOM: bundled UI served via custom Electron protocol instead of remote URL
+import { UI_ORIGIN, registerUIScheme, handleUIProtocol } from './ui-protocol.ts';
 
 import packageJson from '../package.json' with { type: 'json' };
 
 const isWindows = os.platform() === 'win32';
 
-const APP_URL = process.env.APP_URL || 'https://app.httptoolkit.tech';
+const APP_URL = process.env.APP_URL || UI_ORIGIN; // CUSTOM: use bundled local UI
 const hasTrustedOrigin = (url: URL) => url.origin === APP_URL;
 
 const AUTH_TOKEN = crypto.randomBytes(20).toString('base64url');
@@ -53,7 +55,7 @@ let windows: Electron.BrowserWindow[] = [];
 
 let server: ChildProcess | null = null;
 
-app.commandLine.appendSwitch('ignore-connections-limit', 'app.httptoolkit.tech');
+app.commandLine.appendSwitch('ignore-connections-limit', 'httptoolkit'); // CUSTOM: updated for bundled protocol
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('js-flags', [
     '--expose-gc', // Expose window.gc in the UI
@@ -133,7 +135,11 @@ const createWindow = () => {
 // Use a promise to organize events around 'ready', and ensure they never
 // fire before, as Electron will refuse to do various things if they do.
 const appReady = getDeferred();
-app.on('ready', () => appReady.resolve());
+registerUIScheme(); // CUSTOM: must be called before app ready
+app.on('ready', () => {
+    appReady.resolve();
+    handleUIProtocol(RESOURCES_PATH); // CUSTOM: serve bundled UI via app:// protocol
+});
 
 let logStream: WriteStream | undefined;
 const getLogStream = () => {
