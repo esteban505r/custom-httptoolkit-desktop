@@ -2,6 +2,8 @@ node_modules
 out/
 build/
 dist/
+# Copied from custom-httptoolkit-ui by `npm run build:ui` (bundled via extraResources at pack time)
+ui-dist/
 httptoolkit-server/
 appveyor-tools/
 .playwright/

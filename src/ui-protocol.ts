@@ -4,7 +4,19 @@ import * as fs from 'fs';
 import { pathToFileURL } from 'url';
 
 export const UI_SCHEME = 'app';
-export const UI_ORIGIN = 'app://httptoolkit';
+export const UI_HOST = 'httptoolkit';
+export const UI_ORIGIN = `app://${UI_HOST}`;
+
+/**
+ * Whether a frame URL is our trusted UI. For http(s) dev URLs, use origin.
+ * For app://, Node/Electron report origin as "null", so match protocol + host.
+ */
+export function isTrustedAppUrl(url: URL, appUrl: string): boolean {
+    if (appUrl.startsWith('http://') || appUrl.startsWith('https://')) {
+        return url.origin === new URL(appUrl).origin;
+    }
+    return url.protocol === `${UI_SCHEME}:` && url.host === UI_HOST;
+}
 
 /**
  * Must be called synchronously before app.on('ready').

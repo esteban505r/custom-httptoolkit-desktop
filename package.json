@@ -10,7 +10,8 @@
   "scripts": {
     "postinstall": "electron-builder install-app-deps",
     "server:setup": "tsx ./build-setup/setup-server.ts",
-    "build:ui": "cd ../custom-httptoolkit-ui && npm run build && cd - && rm -rf ui-dist && cp -r ../custom-httptoolkit-ui/dist ui-dist",
+    "build:ui": "cd ../custom-httptoolkit-ui && npm run build:default && cd - && rm -rf ui-dist && cp -r ../custom-httptoolkit-ui/dist ui-dist",
+    "build:ui:win": "cd ../custom-httptoolkit-ui && npm run build:windows && cd - && rm -rf ui-dist && cp -r ../custom-httptoolkit-ui/dist ui-dist",
     "build": "npm run build:ui && npm run build:src && npm run build:electron",
     "build:src": "tsc",
     "postbuild:src": "tsx ./build-setup/strip-preload-map.ts",
@@ -18,6 +19,8 @@
     "build:dir-only": "npm run server:setup && electron-builder --dir",
     "start": "npm run server:setup && npm run start:app",
     "start:dev": "tsx ./build-setup/skip-server.ts && cross-env HTK_DEV=true APP_URL='http://localhost:8080' npm run start:app",
+    "start:server:local": "cross-env HTK_SERVER_TOKEN=local-dev-token npm start --prefix ../custom-httptoolkit-server",
+    "start:bundled": "cross-env HTK_EXTERNAL_SERVER=true HTK_SERVER_TOKEN=local-dev-token npm run start:app",
     "start:app": "tsc-watch --onSuccess \"electron .\"",
     "test": "npm run server:setup && npm run build:src && playwright test"
   },

@@ -26,16 +26,18 @@ import { stopServer } from './stop-server.ts';
 import { getDeviceDetails } from './device.ts';
 import { SERVER_PORTS, checkPortsInUse, checkWindowsReservedPorts } from './port-checks.ts';
 // CUSTOM: bundled UI served via custom Electron protocol instead of remote URL
-import { UI_ORIGIN, registerUIScheme, handleUIProtocol } from './ui-protocol.ts';
+import { UI_ORIGIN, registerUIScheme, handleUIProtocol, isTrustedAppUrl } from './ui-protocol.ts';
 
 import packageJson from '../package.json' with { type: 'json' };
 
 const isWindows = os.platform() === 'win32';
 
 const APP_URL = process.env.APP_URL || UI_ORIGIN; // CUSTOM: use bundled local UI
-const hasTrustedOrigin = (url: URL) => url.origin === APP_URL;
+const hasTrustedOrigin = (url: URL) => isTrustedAppUrl(url, APP_URL); // CUSTOM: app:// origin is "null" in URL API
 
-const AUTH_TOKEN = crypto.randomBytes(20).toString('base64url');
+// CUSTOM: optional shared token when using HTK_EXTERNAL_SERVER + fork server from source
+const AUTH_TOKEN = process.env.HTK_SERVER_TOKEN || crypto.randomBytes(20).toString('base64url');
+const EXTERNAL_SERVER = process.env.HTK_EXTERNAL_SERVER === 'true';
 const DESKTOP_VERSION = packageJson.version;
 const BUNDLED_SERVER_VERSION = packageJson.config['httptoolkit-server-version'];
 if (!semver.parse(BUNDLED_SERVER_VERSION)) {
@@ -535,7 +537,7 @@ if (!amMainInstance) {
     const portsInUseCheck = checkPortsInUse('127.0.0.1', [...SERVER_PORTS])
         .then(async (portsInUse) => {
             if (portsInUse.length === 0) return;
-            if (DEV_MODE) return; // In full dev mode this is OK & expected
+            if (DEV_MODE || EXTERNAL_SERVER) return; // expected when server runs separately
 
             await appReady.promise;
 
@@ -630,9 +632,11 @@ if (!amMainInstance) {
         cleanupOldServers().catch(console.log),
         portsInUseCheck,
         reservedPortCheck
-    ]).then(() =>
-        startServer()
-    ).catch((err) => {
+    ]).then(() => {
+        if (!EXTERNAL_SERVER) return startServer(); // CUSTOM: server run separately (fork with app:// CORS)
+        writeLog('Using external server (HTK_EXTERNAL_SERVER) — not starting bundled server');
+        return;
+    }).catch((err) => {
         console.error('Failed to start server, exiting.', err);
 
         // Hide immediately, shutdown entirely after a brief pause for Sentry
