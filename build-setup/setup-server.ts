@@ -19,9 +19,13 @@ const deleteDir = (p: string) => fs.rm(p, { recursive: true, force: true });
 const requiredServerVersion = 'v' + packageJson.config['httptoolkit-server-version'];
 
 const serverDir = path.join(import.meta.dirname, '..', 'httptoolkit-server');
+const customServerRepo = path.join(import.meta.dirname, '..', '..', 'custom-httptoolkit-server');
+
+// CUSTOM: the bundled UI uses app://httptoolkit; only our server fork allows that origin.
+const overlayCustomServerEnabled = process.env.HTK_OVERLAY_CUSTOM_SERVER !== 'false';
 
 // For local testing of the desktop app, we need to pull the latest server and unpack it.
-// This real prod server will then be used with the real prod web UI, but this local desktop app.
+// The official release is used for binaries/node; we overlay the custom bundle for CORS.
 async function setUpLocalEnv() {
     const serverExists = await canAccess(path.join(serverDir, 'package.json'))
     const serverVersion = serverExists
@@ -43,6 +47,45 @@ async function setUpLocalEnv() {
         // because it's a quick easy fix:
         execSync(`find "${serverDir}/node_modules" -type d -name node_gyp_bins -prune -exec rm -r {} \\;`);
     }
+
+    await overlayCustomServerBundle();
+}
+
+/**
+ * Replace the downloaded server's JS bundle with our fork, which allows
+ * requests from the desktop app's app://httptoolkit origin.
+ */
+async function overlayCustomServerBundle() {
+    if (!overlayCustomServerEnabled) {
+        console.log('Skipping custom server overlay (HTK_OVERLAY_CUSTOM_SERVER=false)');
+        return;
+    }
+
+    if (!await canAccess(customServerRepo)) {
+        console.warn(
+            'custom-httptoolkit-server not found at',
+            customServerRepo,
+            '— bundled server will not accept app://httptoolkit. ' +
+            'Clone the fork alongside this repo, or use npm run start:bundled with npm run start:server:local.'
+        );
+        return;
+    }
+
+    const customBundleEntry = path.join(customServerRepo, 'bundle', 'index.js');
+    if (!await canAccess(customBundleEntry)) {
+        console.log('Building custom httptoolkit-server bundle...');
+        execSync('npm install', { cwd: customServerRepo, stdio: 'inherit' });
+        execSync('npm run build:bundle', { cwd: customServerRepo, stdio: 'inherit' });
+    }
+
+    if (!await canAccess(customBundleEntry)) {
+        throw new Error('Custom server bundle build failed — bundle/index.js is missing');
+    }
+
+    const targetBundle = path.join(serverDir, 'bundle');
+    console.log('Overlaying custom server bundle (app://httptoolkit CORS support)...');
+    await fs.cp(path.join(customServerRepo, 'bundle'), targetBundle, { recursive: true });
+    console.log('Custom server bundle overlay completed.');
 }
 
 /*

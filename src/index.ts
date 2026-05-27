@@ -175,23 +175,29 @@ if (!amMainInstance) {
         .argv;
 
     let serverKilled = false;
-    app.on('will-quit', async (event) => {
-        if (server && !serverKilled && !DEV_MODE) {
-            // Don't shutdown until we've tried to kill the server
-            event.preventDefault();
 
-            serverKilled = true;
+    const shutdownBundledServer = async () => {
+        if (!server || serverKilled || DEV_MODE || EXTERNAL_SERVER) return;
 
-            try {
-                await stopServer(server, AUTH_TOKEN);
-            } catch (error) {
-                console.log('Failed to kill server', error);
-                logError(error);
-            } finally {
-                // We've done our best - now shut down for real.
-                app.quit();
-            }
+        serverKilled = true;
+        const serverProc = server;
+        server = null;
+
+        try {
+            await stopServer(serverProc, AUTH_TOKEN);
+        } catch (error) {
+            console.log('Failed to kill server', error);
+            logError(error);
         }
+    };
+
+    app.on('will-quit', async (event) => {
+        if (!server || serverKilled || DEV_MODE || EXTERNAL_SERVER) return;
+
+        // Don't exit until the bundled server has shut down.
+        event.preventDefault();
+        await shutdownBundledServer();
+        app.quit();
     });
 
     app.on('quit', () => {
@@ -662,11 +668,10 @@ if (!amMainInstance) {
     });
 
     app.on('window-all-closed', () => {
-        // On OS X it is common for applications and their menu bar
-        // to stay active until the user quits explicitly with Cmd + Q
-        if (process.platform !== 'darwin') {
-            app.quit();
-        }
+        // Quit on all platforms (including macOS) so closing the window runs
+        // will-quit and stops the bundled server. Without this, the app stays
+        // in the dock and the detached server process keeps running.
+        app.quit();
     });
 }
 

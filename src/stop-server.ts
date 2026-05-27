@@ -1,7 +1,13 @@
 import * as ChildProcess from 'child_process';
 import * as http from 'http';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 
 import { delay } from '@httptoolkit/util';
+
+import { SERVER_PORTS, checkPortsInUse } from './port-checks.ts';
+
+const execFileAsync = promisify(execFile);
 
 const isRunning = (pid: number) => {
     try {
@@ -31,6 +37,14 @@ export async function stopServer(proc: ChildProcess.ChildProcess, token: string)
             break;
         }
     } while (isRunning(proc.pid!))
+
+    // The spawn wrapper can exit while the Node server keeps listening (detached
+    // processes on macOS/Linux). Ensure the API/proxy ports are actually free.
+    const portsStillInUse = await checkPortsInUse('127.0.0.1', [...SERVER_PORTS]);
+    if (portsStillInUse.length > 0) {
+        console.log('Server ports still in use, force-killing listeners:', portsStillInUse);
+        await killProcessesOnPorts(portsStillInUse).catch(console.warn);
+    }
 }
 
 function softShutdown(token: string) {
@@ -86,9 +100,46 @@ function softShutdown(token: string) {
     });
 }
 
+async function killProcessesOnPorts(ports: number[]) {
+    if (process.platform === 'win32') {
+        for (const port of ports) {
+            await new Promise<void>((resolve) => {
+                ChildProcess.exec(
+                    `for /f "tokens=5" %a in ('netstat -ano ^| findstr :${port}') do taskkill /PID %a /F`,
+                    () => resolve()
+                );
+            });
+        }
+        return;
+    }
+
+    for (const port of ports) {
+        try {
+            const { stdout } = await execFileAsync('lsof', ['-ti', `tcp:${port}`]);
+            const pids = stdout.trim().split('\n').filter(Boolean);
+            for (const pid of pids) {
+                process.kill(parseInt(pid, 10), 'SIGKILL');
+            }
+        } catch (e: any) {
+            if (e.code !== 1) throw e; // lsof exit 1 = no matches
+        }
+    }
+}
+
 async function hardKill(proc: ChildProcess.ChildProcess) {
     if (process.platform !== "win32") {
-        process.kill(-proc.pid!, 'SIGKILL');
+        if (!proc.pid) return;
+        try {
+            process.kill(-proc.pid, 'SIGTERM');
+            await delay(500);
+        } catch (e) {
+            console.warn('SIGTERM on server process group failed:', e);
+        }
+        try {
+            process.kill(-proc.pid, 'SIGKILL');
+        } catch (e) {
+            console.warn('SIGKILL on server process group failed:', e);
+        }
     } else {
         return new Promise<void>((resolve, reject) => {
             ChildProcess.exec(`taskkill /pid ${proc.pid} /T /F`, (error, stdout, stderr) => {
